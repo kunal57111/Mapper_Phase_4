@@ -29,6 +29,7 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "mapper_db")
 MEMORY_COLLECTION = "memory"
 AUDIT_MEMORY_COLLECTION = "audit_memory"
 SAVED_TASKS_COLLECTION = "saved_tasks"
+TARGET_SCHEMA_COLLECTION = os.getenv("TARGET_SCHEMA_COLLECTION", "target_schema")
 
 # ============================================================================
 # LLM integration configuration (OpenRouter API)

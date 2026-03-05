@@ -448,14 +448,14 @@ async def list_memory(status: str = "ACTIVE"):
 @app.post("/api/normalize-data/")
 async def normalize_data():
     """
-    Normalize target_schema.json and all memory records.
-    - target_schema.json: field_name values (lowercase, spaces to underscores)
+    Normalize target schema (MongoDB) and all memory records.
+    - target_schema: field_name values (lowercase, spaces to underscores) in MongoDB
     - memory: source_column and target_field values
     Also reloads schema, embeddings, heuristic table, and FAISS index.
     """
     global TARGETS, MEMORY_TABLE, FAISS_INDEX, TARGET_EMBEDDINGS
 
-    schema_count = target_schema.normalize_target_schema_file()
+    schema_count = target_schema.normalize_target_schema_in_mongo()
     memory_result = memory.normalize_all_memory_records()
 
     # Reload schema and rebuild indexes

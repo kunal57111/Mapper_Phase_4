@@ -1,32 +1,78 @@
 """
 Target schema loading and management.
 
-Loads the target schema definition from JSON file. The target schema defines
+Loads the target schema definition from MongoDB. The target schema defines
 all available target fields that source columns can be mapped to.
 
 Also handles:
 - Embedding generation for semantic similarity matching
 - Required field enforcement
 """
-import json
 import numpy as np
-from pathlib import Path
 from typing import List, Dict, Optional, Any, Tuple
 from sentence_transformers import SentenceTransformer
+from pymongo import MongoClient
 
 from backend.models import TargetField, MappingDecision, ColumnProfile
-from backend.config import BASE_DIR, EMBEDDING_MODEL, FAISS_TOP_K
+from backend.config import (
+    EMBEDDING_MODEL, FAISS_TOP_K,
+    MONGO_URI, MONGO_DB_NAME, TARGET_SCHEMA_COLLECTION,
+)
 
 # Global variables to cache target embeddings
 _TARGET_EMBEDDINGS: Optional[np.ndarray] = None
 _TARGET_FIELDS: List[TargetField] = []
 _EMBEDDINGS_MODEL: Optional[SentenceTransformer] = None
 
+# MongoDB connection (lazy singleton)
+_client: Optional[MongoClient] = None
+_db = None
 
-def load_target_schema(path: Path = None) -> List[TargetField]:
+
+def _get_db():
+    """Return the MongoDB database handle for target_schema operations."""
+    global _client, _db
+    if _db is None:
+        _client = MongoClient(MONGO_URI)
+        _db = _client[MONGO_DB_NAME]
+    return _db
+
+
+def _target_schema_col(db=None):
+    """Return the target_schema collection."""
+    if db is None:
+        db = _get_db()
+    return db[TARGET_SCHEMA_COLLECTION]
+
+
+def load_target_schema_from_mongo(db=None) -> List[TargetField]:
     """
-    Load target schema from JSON file.
-    
+    Load target schema from MongoDB target_schema collection.
+    Each document is one target field (field_name, description, category, required, sample_values, datatype).
+
+    Args:
+        db: Optional MongoDB database instance. If None, uses config MONGO_URI/MONGO_DB_NAME.
+
+    Returns:
+        List of TargetField objects, or [] on empty collection or error.
+    """
+    try:
+        col = _target_schema_col(db)
+        cursor = col.find({})
+        targets = []
+        for doc in cursor:
+            d = {k: v for k, v in doc.items() if k != "_id"}
+            targets.append(TargetField(**d))
+        return targets
+    except Exception as e:
+        print(f"[target_schema] load_target_schema_from_mongo failed: {e}")
+        return []
+
+
+def load_target_schema(db=None) -> List[TargetField]:
+    """
+    Load target schema from MongoDB target_schema collection only.
+
     The target schema defines the destination structure with all available
     target fields. Each field includes:
     - field_name: Name of the target field
@@ -34,23 +80,24 @@ def load_target_schema(path: Path = None) -> List[TargetField]:
     - category: Field category/group
     - description: Human-readable description
     - required: Whether this field is required
-    
+
     Args:
-        path: Optional custom path to schema JSON file.
-              If not provided, uses default: target_schema.json in project root
-    
+        db: Optional MongoDB database instance. If None, uses config MONGO_URI/MONGO_DB_NAME.
+
     Returns:
         List of TargetField objects representing all available target fields
+
+    Raises:
+        RuntimeError: If the target_schema collection is empty or load fails.
     """
-    # Use provided path or default to schema in project root
-    schema_path = path or (BASE_DIR / "target_schema.json")
-    
-    # Read and parse JSON file
-    with open(schema_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    
-    # Convert JSON objects to TargetField Pydantic models
-    return [TargetField(**item) for item in data]
+    targets = load_target_schema_from_mongo(db)
+    if not targets:
+        raise RuntimeError(
+            "Target schema is empty. Run scripts/seed_target_schema.py to populate the "
+            f"MongoDB collection '{TARGET_SCHEMA_COLLECTION}' from target_schema.json."
+        )
+    print(f"[target_schema] Loaded {len(targets)} target fields from MongoDB")
+    return targets
 
 
 def build_target_documents(targets: List[TargetField]) -> List[str]:
@@ -272,34 +319,33 @@ def _normalize_for_match(name: str) -> str:
     return name.strip().lower().replace(" ", "_")
 
 
-def normalize_target_schema_file(path: Path = None) -> int:
+def normalize_target_schema_in_mongo(db=None) -> int:
     """
-    Normalize field_name in target_schema.json (lowercase, spaces to underscores).
-    Overwrites the file in place.
+    Normalize field_name in MongoDB target_schema collection (lowercase, spaces to underscores).
+    Updates documents in place.
 
     Args:
-        path: Optional path to schema JSON. Default: BASE_DIR / "target_schema.json"
+        db: Optional MongoDB database instance. If None, uses config.
 
     Returns:
-        Number of fields updated
+        Number of documents updated.
     """
-    schema_path = path or (BASE_DIR / "target_schema.json")
-    with open(schema_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    count = 0
-    for item in data:
-        orig = item.get("field_name", "")
-        if orig:
+    try:
+        col = _target_schema_col(db)
+        cursor = col.find({})
+        count = 0
+        for doc in cursor:
+            orig = doc.get("field_name", "")
+            if not orig:
+                continue
             norm = _normalize_for_match(orig)
             if norm != orig:
-                item["field_name"] = norm
+                col.update_one({"_id": doc["_id"]}, {"$set": {"field_name": norm}})
                 count += 1
-
-    with open(schema_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-    return count
+        return count
+    except Exception as e:
+        print(f"[target_schema] normalize_target_schema_in_mongo failed: {e}")
+        return 0
 
 
 def exact_match_target_schema(

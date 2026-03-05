@@ -1,0 +1,34 @@
+# Environment and secrets (do not commit)
+# .env
+.env.local
+.env.*.local
+
+# Python
+.venv
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+Delete/
+scripts
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+*.faiss
+*.pkl

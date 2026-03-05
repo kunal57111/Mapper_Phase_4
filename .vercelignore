@@ -1,0 +1,16 @@
+# Backend (run elsewhere; not deployed to Vercel)
+backend/
+# Large schema (not needed for frontend or api/config)
+target_schema.json
+# Python / local dev
+.venv
+venv/
+__pycache__
+*.pyc
+.env
+.env.*
+# Optional
+scripts/
+*.faiss
+*.pkl
+Delete/

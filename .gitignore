@@ -1,7 +1,8 @@
 # Environment and secrets (do not commit)
-# .env
+.env
 .env.local
 .env.*.local
+!.env.example
 
 # Python
 .venv

@@ -2,7 +2,7 @@
    Mapper Phase 4 - Frontend Application
    ============================================================ */
 
-// API base URL: from /api/config on Vercel, or localhost when running locally
+// API base URL: from /api/config on Vercel, or fallback when running locally
 function getApi() {
   return (typeof window !== 'undefined' && window.__MAPPER_API__) || 'http://127.0.0.1:8000';
 }

@@ -258,14 +258,14 @@ def decide_with_pipeline(profile: ColumnProfile, targets: List[TargetField],
         tenant_name,
         sample_values=profile.sample_values,
     )
-    memory_candidates = vector_store.query_memory_vector(query_text, top_k=5)
+    memory_candidates = vector_store.query_memory_vector(query_text, top_k=10)
     
     # STEP 3: Target Schema Similarity
     schema_candidates = target_schema.query_target_similarity(
         profile.name,
         source_samples=profile.sample_values,
         inferred_dtype=profile.inferred_dtype,
-        top_k=5,
+        top_k=10,
     )
     
     # Merge candidates from both sources

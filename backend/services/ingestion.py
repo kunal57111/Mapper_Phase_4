@@ -1,14 +1,49 @@
 """
-CSV file ingestion and parsing.
+File ingestion and parsing (CSV and Excel).
 
-Handles reading and parsing uploaded CSV files, extracting column headers
+Handles reading and parsing uploaded CSV/Excel files, extracting column headers
 and sample rows for preview and profiling.
 """
 import csv
-from io import StringIO
+from io import StringIO, BytesIO
 from typing import List, Dict, Any
 
 from fastapi import UploadFile
+
+
+EXCEL_EXTENSIONS = (".xlsx", ".xls")
+
+
+def _read_excel_preview(file: UploadFile, sample_rows: int = 50) -> Dict[str, Any]:
+    """
+    Read uploaded Excel file and extract headers plus sample rows.
+
+    Uses openpyxl (xlsx) or xlrd (xls) via pandas for broad compatibility.
+    """
+    import pandas as pd
+
+    raw = file.file.read()
+    file.file.seek(0)
+
+    fname = (file.filename or "").lower()
+    engine = "openpyxl" if fname.endswith(".xlsx") else "xlrd"
+
+    df = pd.read_excel(BytesIO(raw), engine=engine, nrows=sample_rows)
+    df.columns = [str(c).lower().replace(" ", "_") for c in df.columns]
+    headers = list(df.columns)
+    rows: List[Dict[str, Any]] = df.astype(str).to_dict(orient="records")
+
+    return {"columns": headers, "sample_rows": rows}
+
+
+def read_file_preview(file: UploadFile, sample_rows: int = 50) -> Dict[str, Any]:
+    """
+    Unified reader: dispatches to CSV or Excel reader based on file extension.
+    """
+    fname = (file.filename or "").lower()
+    if fname.endswith(EXCEL_EXTENSIONS):
+        return _read_excel_preview(file, sample_rows)
+    return read_csv_preview(file, sample_rows)
 
 
 def read_csv_preview(file: UploadFile, sample_rows: int = 50) -> Dict[str, Any]:

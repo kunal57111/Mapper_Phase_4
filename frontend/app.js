@@ -37,6 +37,19 @@ let savedTasks = [];
 // ============================================================
 // Navigation
 // ============================================================
+const sidebar = document.getElementById("sidebar");
+const sidebarToggle = document.getElementById("sidebarToggle");
+
+if (sidebarToggle && sidebar) {
+  sidebarToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const collapsed = sidebar.classList.toggle("sidebar-collapsed");
+    sidebarToggle.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+    sidebarToggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+    sidebarToggle.querySelector("i").className = collapsed ? "fas fa-chevron-right" : "fas fa-chevron-left";
+  });
+}
+
 document.querySelectorAll(".nav-item").forEach(item => {
   item.addEventListener("click", () => {
     const page = item.dataset.page;
@@ -49,6 +62,74 @@ document.querySelectorAll(".nav-item").forEach(item => {
     if (page === "tasks") loadSavedTasks();
   });
 });
+
+// ============================================================
+// Sidebar: OpenRouter API Key
+// ============================================================
+const apiKeyInput    = document.getElementById("apiKeyInput");
+const apiKeySaveBtn  = document.getElementById("apiKeySaveBtn");
+const apiKeyStatus   = document.getElementById("apiKeyStatus");
+const apiKeyToggle   = document.getElementById("apiKeyToggleVis");
+
+function setApiKeyStatus(msg, type) {
+  apiKeyStatus.textContent = msg;
+  apiKeyStatus.className = `apikey-status status-${type}`;
+}
+
+async function checkApiKeyStatus() {
+  try {
+    const res = await fetch(`${getApi()}/settings/api-key/status/`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.configured) {
+        setApiKeyStatus(`Active: ${data.masked_key}`, "ok");
+        apiKeyInput.placeholder = data.masked_key;
+      } else {
+        setApiKeyStatus("Not configured", "none");
+      }
+    }
+  } catch (_) {
+    setApiKeyStatus("Backend unreachable", "err");
+  }
+}
+
+if (apiKeySaveBtn) {
+  apiKeySaveBtn.addEventListener("click", async () => {
+    const key = apiKeyInput.value.trim();
+    if (!key) { setApiKeyStatus("Enter a key first", "err"); return; }
+
+    apiKeySaveBtn.disabled = true;
+    setApiKeyStatus("Saving...", "none");
+
+    try {
+      const res = await fetch(`${getApi()}/settings/api-key/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: key }),
+      });
+      if (res.ok) {
+        apiKeyInput.value = "";
+        setApiKeyStatus("Key saved successfully", "ok");
+        await checkApiKeyStatus();
+      } else {
+        const err = await res.json();
+        setApiKeyStatus(err.detail || "Save failed", "err");
+      }
+    } catch (e) {
+      setApiKeyStatus("Connection error", "err");
+    } finally {
+      apiKeySaveBtn.disabled = false;
+    }
+  });
+}
+
+if (apiKeyToggle && apiKeyInput) {
+  apiKeyToggle.addEventListener("click", () => {
+    const isPassword = apiKeyInput.type === "password";
+    apiKeyInput.type = isPassword ? "text" : "password";
+    apiKeyToggle.querySelector("i").className = isPassword ? "fas fa-eye-slash" : "fas fa-eye";
+  });
+}
 
 // ============================================================
 // Utility helpers
@@ -130,7 +211,7 @@ async function handleUpload() {
   const file = fileInput.files[0];
   const tenant = tenantInput.value.trim();
   if (!tenant) { toast(statusEl, "Tenant name is required", "error"); return; }
-  if (!file)   { toast(statusEl, "Select a CSV file", "error"); return; }
+  if (!file)   { toast(statusEl, "Select a file", "error"); return; }
 
   if (!allTargets.length) await loadAllTargets();
 
@@ -187,7 +268,6 @@ function renderReview(mappings) {
     tr.innerHTML = `
       <td><button class="expand-toggle" onclick="toggleDetail(${i})" title="Details"><i class="fas fa-chevron-right"></i></button></td>
       <td>${m.source_column}</td>
-      <td>${renderSampleChips(profileSamples)}</td>
       <td>${target}</td>
       <td><span class="conf-badge ${confClass(conf)}">${(conf * 100).toFixed(0)}%</span></td>
       <td class="actions-cell">
@@ -204,7 +284,7 @@ function renderReview(mappings) {
     detailTr.className = "detail-row";
     detailTr.style.display = "none";
     detailTr.innerHTML = `
-      <td colspan="6">
+      <td colspan="5">
         <dl class="detail-grid">
           <div>
             <dt>Source Data Type</dt>
@@ -226,7 +306,7 @@ function renderReview(mappings) {
             <dt>Explanation</dt>
             <dd>${m.explanation || '-'}</dd>
           </div>
-          <div>
+          <div class="detail-decision" style="grid-column:1/-1">
             <dt>Decision</dt>
             <dd><span class="pill ${m.decision === 'auto_approved' ? 'pill-active' : m.decision === 'needs_review' ? 'pill-saved' : 'pill-disabled'}">${m.decision || '-'}</span></dd>
           </div>
@@ -276,7 +356,7 @@ window.rejectRow = function(i) {
   corr.id = `corr-row-${i}`;
   corr.className = "correction-row";
   corr.innerHTML = `
-    <td colspan="6" style="padding-left:44px">
+    <td colspan="5" style="padding-left:44px">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="corr-sel-${i}" style="flex:1;min-width:200px"></select>
         <button class="btn btn-sm btn-primary" onclick="saveCorr(${i})">Save</button>
@@ -821,4 +901,7 @@ if (trainingForm) {
 // ============================================================
 // Init
 // ============================================================
-loadApiConfig().then(() => loadAllTargets());
+loadApiConfig().then(() => {
+  loadAllTargets();
+  checkApiKeyStatus();
+});

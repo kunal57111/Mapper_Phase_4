@@ -130,19 +130,21 @@ async def startup_event():
 # CSV / Profile / Map endpoints
 # ============================================================================
 
+ALLOWED_EXTENSIONS = (".csv", ".xlsx", ".xls")
+
 @app.post("/upload/", response_model=FileUploadResponse)
 async def upload_csv(file: UploadFile = File(...)):
-    if not file.filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported.")
-    preview = ingestion.read_csv_preview(file, sample_rows=SAMPLE_ROWS)
+    if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="Only CSV and Excel files are supported.")
+    preview = ingestion.read_file_preview(file, sample_rows=SAMPLE_ROWS)
     return FileUploadResponse(**preview)
 
 
 @app.post("/profile/", response_model=ProfileResponse)
 async def profile_schema(file: UploadFile = File(...)):
-    if not file.filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Only CSV files are supported.")
-    preview = ingestion.read_csv_preview(file, sample_rows=SAMPLE_ROWS)
+    if not file.filename.lower().endswith(ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="Only CSV and Excel files are supported.")
+    preview = ingestion.read_file_preview(file, sample_rows=SAMPLE_ROWS)
     profiles = profiler.profile_columns(preview["sample_rows"])
     return ProfileResponse(profiles=profiles)
 
@@ -425,6 +427,40 @@ async def get_all_targets():
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Mapper Phase 3 API"}
+
+
+# ============================================================================
+# Settings Endpoints
+# ============================================================================
+
+@app.post("/settings/api-key/")
+async def set_api_key(request: Request):
+    """Set OpenRouter API key at runtime (replaces env-based config)."""
+    body = await request.json()
+    key = body.get("api_key", "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="api_key is required")
+
+    import backend.config as cfg
+    from backend.services import llm_service
+
+    cfg.OPENROUTER_API_KEY = key
+    cfg.LLM_API_KEY = key
+    llm_service.LLM_API_KEY = key
+
+    return {"status": "ok", "message": "API key updated"}
+
+
+@app.get("/settings/api-key/status/")
+async def get_api_key_status():
+    """Check whether an OpenRouter API key is currently configured."""
+    import backend.config as cfg
+    configured = bool(cfg.OPENROUTER_API_KEY)
+    masked = ""
+    if configured:
+        k = cfg.OPENROUTER_API_KEY
+        masked = k[:4] + "..." + k[-4:] if len(k) > 8 else "****"
+    return {"configured": configured, "masked_key": masked}
 
 
 # ============================================================================
